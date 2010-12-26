@@ -1,0 +1,34 @@
+This is build(1), a front-end to various build systems.
+
+Usage:
+
+build
+      [-CDIR|--dir=DIR]             Change to DIR before commencing
+      [-pPATH|--project=PATH]       Specify path to a project file or directory
+      [-PNAME|--product=NAME]       Build the named product NAME
+      [-BTRIPLET|--build=TRIPLET]   Set the build system type to TRIPLET
+      [-HTRIPLET|--host=TRIPLET]    Set the host system type to TRIPLET
+      [-TTRIPLET|--target=TRIPLET]  Set the target system type to TRIPLET
+      [-cNAME|--config=NAME]        Build using the configuration named NAME
+      [-sPATH|--sdk=PATH]           Build using the SDK found at PATH
+      [-DVAR[=VALUE]]               Define the variable VAR (optionally to VALUE)
+      [-O|--only]                   Do not attempt prerequisite build phases
+      [-N|--dry-run]                Don't actually execute anything
+      [-r[USER@]HOST|--at=[USER@]HOST]
+                                    Invoke build on a remote host
+      [-v|--verbose]                Print information about actions
+      [-q|--quiet]                  Be as quiet as possible
+      [PHASE]                       Specify the build phase PHASE
+
+build --help|-h                     Show this usage information
+
+build --version|-V                  Show version information
+
+PHASE is one of:
+      prepare                       Prepare the project for building
+                                    (e.g., run autoconf, automake, etc.)
+      config                        Configure the project for current host
+      build                         Actually build the project
+      install                       Install the built project
+      clean                         Remove 'build' output
+      distclean                     Remove 'build' and 'config' output
