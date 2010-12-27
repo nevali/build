@@ -49,6 +49,137 @@ context_handler_list(FILE *fout)
 	}
 }
 
+int
+context_msg(build_context_t *ctx, int verbosity, const char *fmt, ...)
+{
+	va_list ap;
+	int r, e;
+
+	e = errno;
+	/* If verbosity < 0, only show in verbose mode.
+	 * If verbosity == 0, only show if not quiet.
+	 * If verbosity > 0, always show.
+	 */
+	r = 0;
+	if(verbosity < 0 && !ctx->verbose)
+	{
+		return 0;
+	}
+	if(!verbosity && ctx->quiet)
+	{
+		return 0;
+	}
+	va_start(ap, fmt);
+	if(ctx->level)
+	{
+		r += fprintf(stderr, "%s[%d]: ", ctx->progname, ctx->level);
+	}
+	else
+	{
+		r += fprintf(stderr, "%s: ", ctx->progname);
+	}
+	if(verbosity >= MSG_FATAL)
+	{
+		r += fprintf(stderr, "*** ");
+	}
+	if(verbosity >= MSG_PERROR)
+	{
+		r += fprintf(stderr, ": %s\n", strerror(errno));
+	}
+	r += vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	return r;
+}
+
+int
+context_build(build_context_t *ctx, build_phase_t phase, int isauto)
+{
+	static const char *phases[] = { "distclean", "clean", "prepare", "config", "build", "install" };
+	int wasauto, r, s;
+
+	wasauto = ctx->isauto;
+	ctx->isauto = isauto;
+	context_msg(ctx, (ctx->isauto ? MSG_INFO : MSG_ECHO), "beginning phase '%s'.\n", phases[phase]);
+	r = -255;
+	switch(phase)
+	{
+	case PH_DISTCLEAN:
+		if(ctx->vt->distclean)
+		{
+			r = ctx->vt->distclean(ctx);
+		}
+		ctx->configured = ctx->built = ctx->installed = 0;
+		break;
+	case PH_CLEAN:
+		if(ctx->vt->clean)
+		{
+			r = ctx->vt->clean(ctx);
+		}
+		ctx->built = ctx->installed = 0;
+		break;
+	case PH_PREPARE:
+		if(!ctx->prepared && ctx->vt->prepare)
+		{
+			r = ctx->vt->prepare(ctx);
+		}
+		ctx->prepared = 1;
+		break;
+	case PH_CONFIG:
+		if(!ctx->only && !ctx->prepared)
+		{
+			if((s = context_build(ctx, PH_PREPARE, 1)))
+			{
+				ctx->isauto = wasauto;
+				return s;
+			}
+		}
+		if(!ctx->configured && ctx->vt->config)
+		{
+			r = ctx->vt->config(ctx);
+		}
+		ctx->configured = 1;
+		break;
+	case PH_BUILD:
+		if(!ctx->only && !ctx->configured)
+		{
+			if((s = context_build(ctx, PH_CONFIG, 1)))
+			{
+				ctx->isauto = wasauto;
+				return s;
+			}
+		}
+		if(!ctx->built && ctx->vt->build)
+		{
+			r = ctx->vt->build(ctx);
+		}
+		ctx->built = 1;
+		break;
+	case PH_INSTALL:
+		if(!ctx->only && !ctx->built)
+		{
+			if((s = context_build(ctx, PH_BUILD, 1)))
+			{
+				ctx->isauto = wasauto;
+				return s;
+			}
+		}
+		if(!ctx->installed && ctx->vt->install)
+		{
+			r = ctx->vt->install(ctx);
+		}
+		ctx->installed = 1;
+		break;
+	}
+	if(r == -255)
+	{
+		context_msg(ctx, (ctx->isauto ? MSG_INFO : MSG_ECHO), "nothing to be done for phase '%s'.\n", phases[phase]);
+		r = 0;
+	}
+	ctx->isauto = wasauto;
+	return r;
+}
+		
+
 build_handler_t *
 context_detect(build_context_t *ctx)
 {
@@ -78,14 +209,14 @@ context_chdir(build_context_t *ctx)
 
 	if((here = open(".", O_RDONLY)) < 0)
 	{
-		fprintf(stderr, "%s: open(\".\", O_RDONLY): %s\n", ctx->progname, strerror(errno));
+		context_msg(ctx, MSG_PERROR, "open(\".\", O_RDONLY)");
 		return -1;
 	}
 	if(ctx->wd)
 	{
 		if(chdir(ctx->wd) < 0)
-		{
-			fprintf(stderr, "%s: %s: %s\n", ctx->progname, ctx->wd, strerror(errno));
+		{			
+			context_msg(ctx, MSG_PERROR, "%s", ctx->wd);
 			close(here);
 			return -1;
 		}
@@ -103,6 +234,7 @@ context_returnwd(build_context_t *ctx)
 const char *
 context_pathsearch(build_context_t *ctx, const char *name)
 {
+	static int pwarned;
 	static char *pathbuf;
 	static size_t pbufsize;
 
@@ -113,7 +245,11 @@ context_pathsearch(build_context_t *ctx, const char *name)
 	nl = strlen(name);
 	if(!(path = getenv("PATH")))
 	{
-		fprintf(stderr, "%s: Warning: PATH is unset\n", ctx->progname);
+		if(!pwarned)
+		{
+			context_msg(ctx, MSG_ERROR, "warning: the PATH environment variable is not set.\n");
+		}
+		pwarned = 1;
 		return NULL;
 	}
 	l = strlen(path) + strlen(name) + 1;
@@ -121,7 +257,7 @@ context_pathsearch(build_context_t *ctx, const char *name)
 	{
 		if(!(pp = realloc(pathbuf, l)))
 		{
-			fprintf(stderr, "%s: realloc(..., %u): %s\n", ctx->progname, (unsigned) l, strerror(errno));
+			context_msg(ctx, MSG_PERROR, "realloc(..., %u)", (unsigned) l);
 			return NULL;
 		}
 		pathbuf = pp;
@@ -162,7 +298,7 @@ context_cmd_create(build_context_t *ctx, const char *name, ...)
 
 	if(!(cmd = calloc(1, sizeof(cmd_t))))
 	{
-		fprintf(stderr, "%s: calloc(1, %u): %s\n", ctx->progname, (unsigned) sizeof(cmd_t), strerror(errno));
+		context_msg(ctx, MSG_PERROR, "calloc(1, %u)", (unsigned) sizeof(cmd_t));
 		return NULL;
 	}
 	cmd->context = ctx;
@@ -177,7 +313,6 @@ context_cmd_create(build_context_t *ctx, const char *name, ...)
 	{
 		if((cmdline = getenv(p)))
 		{
-			fprintf(stderr, "[environment variable %s is set to %s]\n", p, cmdline);
 			break;
 		}
 	}	
@@ -225,7 +360,7 @@ cmd_arg_add(cmd_t *cmd, const char *arg)
 	{
 		if(!(p = realloc(cmd->argv, sizeof(char *) * (cmd->argalloc + 8))))
 		{
-			fprintf(stderr, "%s: realloc(..., %u): %s\n", cmd->context->progname, (unsigned) (sizeof(char *) * (cmd->argalloc + 8)), strerror(errno));
+			context_msg(cmd->context, MSG_PERROR, "realloc(..., %u)", (unsigned) (sizeof(char *) * (cmd->argalloc + 8)));
 			return -1;
 		}
 		cmd->argalloc += 8;
@@ -233,7 +368,7 @@ cmd_arg_add(cmd_t *cmd, const char *arg)
 	}
 	if(!(cmd->argv[cmd->argc] = strdup(arg)))
 	{
-		fprintf(stderr, "%s: strdup(\"%s\"): %s\n", cmd->context->progname, arg, strerror(errno));
+		context_msg(cmd->context, MSG_PERROR, "strdup(...[%u])", (unsigned) strlen(arg));
 		return -1;
 	}
 	cmd->argc++;
@@ -266,7 +401,7 @@ cmd_spawn(cmd_t *cmd, int ignore)
 	int status;
 	size_t c;
 
-	if(cmd->context->verbose)
+	if(!cmd->context->quiet)
 	{
 		fputc('+', stderr);
 		fputc(' ', stderr);
@@ -304,11 +439,11 @@ cmd_spawn(cmd_t *cmd, int ignore)
 		{
 			if(!cmd->context->quiet)
 			{
-				fprintf(stderr, "%s: *** Build phase failed with exit status %d.  (Ignored)\n", cmd->context->progname, r);
+				context_msg(cmd->context, MSG_FATAL, "Build phase failed with exit status %d.  (Ignored)\n", r);
 			}
 			return 0;
 		}
-		fprintf(stderr, "%s: *** Build phase failed with exit status %d.  Stop.\n", cmd->context->progname, r);
+		context_msg(cmd->context, MSG_FATAL, "Build phase failed with exit status %d.  Stop.\n", r);
 	}
 	return r;	
 }
@@ -327,7 +462,7 @@ context_defn_add(build_context_t *ctx, const char *name, const char *value)
 
 	if(!(p = malloc(sizeof(build_defn_t))))
 	{
-		fprintf(stderr, "%s: malloc(%u): %s\n", ctx->progname, (unsigned) sizeof(build_defn_t), strerror(errno));
+		context_msg(ctx, MSG_PERROR, "malloc(%u)", (unsigned) sizeof(build_defn_t));
 		return NULL;
 	}
 	l = strlen(name) + 1;
@@ -337,7 +472,7 @@ context_defn_add(build_context_t *ctx, const char *name, const char *value)
 	}
 	if(!(p->name = calloc(1, l)))
 	{
-		fprintf(stderr, "%s: malloc(%u): %s\n", ctx->progname, (unsigned) l, strerror(errno));
+		context_msg(ctx, MSG_PERROR, "malloc(%u)", (unsigned) l);
 		free(p);
 		return NULL;
 	}

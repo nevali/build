@@ -23,15 +23,81 @@ extern int gnumake_install(build_context_t *ctx);
 extern int gnumake_clean(build_context_t *ctx);
 extern int gnumake_build(build_context_t *ctx);
 
+char *
+autoconf_locate(build_context_t *ctx, int *res)
+{
+	static char *pbuf;
+	char *cwd, *t;
+
+	*res = 0;
+	if(pbuf)
+	{
+		free(pbuf);
+		pbuf = NULL;
+	}
+	if(!(cwd = getcwd(NULL, 0)))
+	{
+		context_msg(ctx, MSG_PERROR, "getcwd()");
+		*res = -1;
+		return NULL;
+	}
+	if(!(pbuf = calloc(1, strlen(cwd) + 32)))
+	{
+		context_msg(ctx, MSG_PERROR, "calloc(1, %u)", strlen(cwd) + 32);
+		*res = -1;
+		return NULL;
+	}
+	while(strlen(cwd) > 1)
+	{
+		sprintf(pbuf, "%s/configure.ac", cwd);
+		if(access(pbuf, R_OK) != -1)
+		{
+			strcpy(pbuf, cwd);
+			free(cwd);
+			return pbuf;
+		}
+		sprintf(pbuf, "%s/configure.in", cwd);
+		if(access(pbuf, R_OK) != -1)
+		{
+			strcpy(pbuf, cwd);
+			free(cwd);
+			return pbuf;
+		}
+		if(!(t = strrchr(cwd, '/')))
+		{
+			break;
+		}
+		*t = 0;
+	}
+	free(cwd);
+	free(pbuf);
+	pbuf = NULL;
+	*res = -2;   
+	return 0;
+}
+		
+int
+autoconf_chdir(build_context_t *ctx)
+{
+	int r;
+	char *wd;
+
+	if((wd = autoconf_locate(ctx, &r)))
+	{
+		if(chdir(wd) == -1)
+		{
+			context_msg(ctx, MSG_PERROR, "chdir(%s)", wd);
+			return -1;
+		}
+		return 0;
+	}
+	return -1;
+}
+
 int
 autoconf_detect(build_context_t *ctx)
 {
-	static const char *try[] = {
-		"Makefile.am", "makefile.am", "Makefile.in", "makefile.in", 
-		"GNUmakefile.in", "gnumakefile.in", "configure.ac",
-		"configure.in"
-	};
-	size_t c;
+	int r;
 	
 	if(ctx->project && !S_ISDIR(ctx->sbuf.st_mode))
 	{
@@ -42,17 +108,17 @@ autoconf_detect(build_context_t *ctx)
 	{
 		if(chdir(ctx->project) < 0)
 		{
-			fprintf(stderr, "%s: %s: %s\n", ctx->progname, ctx->project, strerror(errno));
+			context_msg(ctx, MSG_PERROR, "chdir(%s)", ctx->project);
 			return -1;
 		}
 	}
-	for(c = 0; try[c]; c++)
+	if(autoconf_locate(ctx, &r))
 	{
-		if(!access(try[c], R_OK))
-		{
-			context_returnwd(ctx);
-			return 1;
-		}
+		return 1;
+	}
+	if(r == -1)
+	{
+		return -1;
 	}
 	return 0;
 }
@@ -61,13 +127,9 @@ int
 autoconf_prepare(build_context_t *ctx)
 {
 	cmd_t *cmd;
-	int r;
+	int r, r1, r2;
+	struct stat conf, csrc;
 
-	if(ctx->prepared)
-	{
-		return 0;
-	}
-	ctx->prepared = 1;
 	if(ctx->project)
 	{
 		if(chdir(ctx->project) < 0)
@@ -76,12 +138,35 @@ autoconf_prepare(build_context_t *ctx)
 			return -1;
 		}
 	}
+	if(autoconf_chdir(ctx))
+	{
+		return -1;
+	}
 	/* TODO:
-	 * 1. Find project root
-	 * 2. Is it configure.in or configure.ac ?
-	 * 3. Is it Makefile, makefile, GNUmakefile.{in,am} ?
-	 * 4. If auto mode, only rebuild if we detect changes
+	 *  compare acinclude.m4/aclocal.m4, Makefile.am/Makefile.in, etc.
 	 */
+	if(ctx->isauto)
+	{
+		if(-1 == (r1 = stat("configure.gnu", &conf)))
+		{
+			r1 = stat("configure", &conf);
+		}
+		if(-1 == (r2 = stat("configure.ac", &csrc)))
+		{
+			if(-1 == (r2 = stat("configure.in", &csrc)))
+			{
+				context_msg(ctx, MSG_PERROR, "failed to locate configure.ac or configure.in");
+				return -1;
+			}
+		}
+		if(r1 == -1 || conf.st_mtime >= csrc.st_mtime)
+		{
+			/* configure script is up to date */
+			context_msg(ctx, MSG_INFO, "configure script is up to date\n");
+			context_returnwd(ctx);
+			return -255;
+		}
+	}
 	cmd = context_cmd_create(ctx, "autoreconf", NULL, "BUILD_AUTORECONF", "AUTORECONF", NULL);
 	cmd_arg_add(cmd, "--install");
 	r = cmd_spawn(cmd, 0);
@@ -93,19 +178,13 @@ autoconf_prepare(build_context_t *ctx)
 int
 autoconf_config(build_context_t *ctx)
 {
-	int r, a;
+	int r;
 	cmd_t *cmd;
 	build_defn_t *p;
 
-	if(ctx->configured)
-	{
-		return 0;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->prepare(ctx));
 	/* If auto mode, we should only re-run configure if it's newer
 	 * than our makefile.
 	 */
-	ctx->configured = 1;
 	cmd = context_cmd_create(ctx, "/bin/sh", NULL, NULL);
 	if(ctx->project)
 	{
@@ -215,7 +294,21 @@ autoconf_config(build_context_t *ctx)
 	{
 		cmd_arg_addf(cmd, "--program-transform-name=%s", p->value);
 	}
-
+	for(p = ctx->defs; p; p = p->hh.next)
+	{
+		if(!strncmp(p->name, "with-", 5) || !strncmp(p->name, "without-", 8) ||
+		   !strncmp(p->name, "enable-", 7) || !strncmp(p->name, "disable-", 7))
+		{
+			if(p->value)
+			{
+				cmd_arg_addf(cmd, "--%s=%s", p->name, p->value);
+			}
+			else
+			{
+				cmd_arg_addf(cmd, "--%s", p->name);
+			}
+		}
+	}		
 	if((p = context_defn_find(ctx, "CPP")) && p->value)
 	{
 		cmd_arg_addf(cmd, "CPP=%s", p->value);
@@ -249,16 +342,10 @@ autoconf_config(build_context_t *ctx)
 int
 autoconf_install(build_context_t *ctx)
 {
-	int r, a;
+	int r;
 	cmd_t *cmd;
 	build_defn_t *p;
 
-	if(ctx->installed)
-	{
-		return 0;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->build(ctx));
-	ctx->installed = 1;
 	if(!ctx->quiet && !ctx->isauto && ctx->product)
 	{
 		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'install' phase of Makefile-based projects\n", ctx->progname, ctx->product);
@@ -281,9 +368,6 @@ autoconf_distclean(build_context_t *ctx)
 	cmd_t *cmd;
 	int r;
 
-	ctx->built = 0;
-	ctx->installed = 0;
-	ctx->configured = 0;
 	if(!ctx->quiet && !ctx->isauto && ctx->product)
 	{
 		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'distclean' phase of Makefile-based projects\n", ctx->progname, ctx->product);

@@ -19,6 +19,8 @@
 
 #include "p_build.h"
 
+int makelevel;
+
 static const char *progname;
 
 static struct option longopts[] = {
@@ -62,6 +64,7 @@ usage(void)
 			"      [-v|--verbose]                Print information about actions\n"
 			"      [-q|--quiet]                  Be as quiet as possible\n"
 			"      [PHASE]                       Specify the build phase PHASE\n"
+			"      [VAR=VALUE] ...               Define the variable VAR to VALUE\n"
 			"\n"
 			"%s --help|-h                     Show this usage information\n"
 			"\n"
@@ -90,10 +93,24 @@ version(void)
 void
 parse_options(int argc, char **argv, build_context_t *context)
 {
-	int r;
+	/* These are variable names which may be used as long options.
+	 * i.e., rather than specifying -Dprefix=/opt/local, you can
+	 * specify --prefix=/opt/local.
+	 */
+	static const char *aliases[] = {
+		"prefix", "exec-prefix", "bindir", "sbindir", "libexecdir",
+		"sysconfdir", "sharedstatedir", "localstatedir", "libdir",
+		"includedir", "oldincludedir", "datarootdir", "datadir",
+		"infodir", "localedir", "mandir", "docdir", "htmldir",
+		"dvidir", "pdfdir", "psdir", "program-prefix",
+		"program-suffix", "program-transform-name",
+		NULL
+	};
+	int r, c, match, idx;
 	char *p;
-
-	while((r = getopt_long(argc, argv, "hVONrvqD:C:P:B:H:T:c:s:", longopts, NULL)) != EOF)
+	
+	opterr = 0;
+	while((r = getopt_long(argc, argv, "hVONrvqD:C:P:B:H:T:c:s:", longopts, &idx)) != EOF)
 	{
 		switch(r)
 		{
@@ -155,17 +172,74 @@ parse_options(int argc, char **argv, build_context_t *context)
 			context_defn_add(context, optarg, p);
 			break;
 		case '?':
+			if(longopt)
+			{
+				if(idx != -1)
+				{
+					if(longopts[idx].has_arg == no_argument)
+					{
+						fprintf(stderr, "%s: option `--%s' doesn't allow an argument\n", context->progname, longopt);
+					}
+					else if(longopts[idx].has_arg == required_argument)
+					{
+						fprintf(stderr, "%s: option `--%s' requires an argument\n", context->progname, longopt);
+					}
+					else
+					{
+						fprintf(stderr, "%s: an unknown error occurred processing the option `--%s'\n", context->progname, longopt);
+					}
+					exit(EXIT_FAILURE);
+				}
+				if(!strncmp(longopt, "with-", 5) || !strncmp(longopt, "without-", 8) ||
+				   !strncmp(longopt, "enable-", 7) || !strncmp(longopt, "disable-", 7))
+				{
+					context_defn_add(context, longopt, optarg);
+					continue;
+				}
+				match = 0;
+				for(c = 0; aliases[c]; c++)
+				{
+					fprintf(stderr, "comparing %s and %s\n", longopt, aliases[c]);
+					if(!strcmp(longopt, aliases[c]))
+					{
+						context_defn_add(context, aliases[c], optarg);
+						match = 1;
+						break;
+					}
+				}
+				if(match)
+				{
+					continue;
+				}
+				fprintf(stderr, "%s: unrecongnized option `--%s`\n", context->progname, longopt);
+				exit(EXIT_FAILURE);
+			}
+			fprintf(stderr, "%s: unrecognized option `-%c'\n", context->progname, optopt);
 			exit(EXIT_FAILURE);
 		default:
-			fprintf(stderr, "r=%c, optind=%d, optarg=%s\n", r, optind, optarg);
+			fprintf(stderr, "[unhandled option: r=%c, optind=%d, optarg=%s]\n", r, optind, optarg);
 		}
 	}
+	for(c = optind; c < argc; c++)
+	{
+		if(!strcmp(argv[c], "-" ) || !strcmp(argv[c], "--"))
+		{
+			continue;
+		}
+		if((p = strchr(argv[c], '=')))
+		{
+			*p = 0;
+			p++;
+			context_defn_add(context, argv[c], p);
+			*p = '=';
+		}
+	}		
 }
 
 int
 main(int argc, char **argv)
 {
-	char *t;
+	char *t, buf[64];
 	build_context_t context;
 	int r, here;
 
@@ -179,6 +253,12 @@ main(int argc, char **argv)
 	}
 	memset(&context, 0, sizeof(build_context_t));
 	context.progname = progname;
+	if((t = getenv("MAKELEVEL")))
+	{
+		context.level = atoi(t);
+	}
+	sprintf(buf, "%d", context.level + 1);
+	setenv("MAKELEVEL", buf, 1);
 	parse_options(argc, argv, &context);
 	if((here = context_chdir(&context)) < 0)
 	{
@@ -194,61 +274,51 @@ main(int argc, char **argv)
 	}
 	if(NULL == context_detect(&context))
 	{
-		fprintf(stderr, "%s: *** No suitable project file or directory could be found.  Stop.\n", progname);
+		context_msg(&context, MSG_FATAL, "No suitable project file or directory could be found.  Stop.\n");
 		exit(EXIT_FAILURE);
 	}
 	if(optind >= argc)
 	{
-		return context.vt->build(&context);
+		return context_build(&context, PH_BUILD, 0);
 	}
 	for(; optind < argc; optind++)
 	{
+		if(!strcmp(argv[optind], "-" ) || !strcmp(argv[optind], "--") || strchr(argv[optind], '='))
+		{
+			continue;
+		}
 		if(!strcmp(argv[optind], "prepare"))
 		{
-			if((r = context.vt->prepare(&context)))
-			{
-				return r;
-			}
+			r = context_build(&context, PH_PREPARE, 0);
 		}
 		else if(!strcmp(argv[optind], "config"))
 		{
-			if((r = context.vt->config(&context)))
-			{
-				return r;
-			}
+			r = context_build(&context, PH_CONFIG, 0);
 		}
 		else if(!strcmp(argv[optind], "build"))
 		{
-			if((r = context.vt->build(&context)))
-			{
-				return r;
-			}
+			r = context_build(&context, PH_BUILD, 0);
 		}
 		else if(!strcmp(argv[optind], "install"))
 		{
-			if((r = context.vt->install(&context)))
-			{
-				return r;
-			}
+			r = context_build(&context, PH_INSTALL, 0);
 		}
 		else if(!strcmp(argv[optind], "clean"))
 		{
-			if((r = context.vt->clean(&context)))
-			{
-				return r;
-			}
+			r = context_build(&context, PH_CLEAN, 0);
 		}
 		else if(!strcmp(argv[optind], "distclean"))
 		{
-			if((r = context.vt->distclean(&context)))
-			{
-				return r;
-			}
+			r = context_build(&context, PH_DISTCLEAN, 0);
 		}
 		else
 		{
-			fprintf(stderr, "%s: unrecognized build phase `%s'\n", progname, argv[optind]);
+			context_msg(&context, MSG_FATAL, "unrecognized build phase `%s'\n", argv[optind]);
 			exit(EXIT_FAILURE);
+		}
+		if(r)
+		{
+			return (r < 0 ? 1 : r);
 		}
 	}
 	return 0;

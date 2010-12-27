@@ -1,6 +1,7 @@
 This is build(1), a front-end to various build systems.
 
-Usage:
+Usage
+=====
 
 build
       [-CDIR|--dir=DIR]             Change to DIR before commencing
@@ -19,6 +20,7 @@ build
       [-v|--verbose]                Print information about actions
       [-q|--quiet]                  Be as quiet as possible
       [PHASE]                       Specify the build phase PHASE
+      [VAR=VALUE] ...               Define the variable VAR to VALUE
 
 build --help|-h                     Show this usage information
 
@@ -32,3 +34,141 @@ PHASE is one of:
       install                       Install the built project
       clean                         Remove 'build' output
       distclean                     Remove 'build' and 'config' output
+
+
+Invocation
+==========
+
+The build utility is a front-end to various different build systems. It works
+by examining the contents of the current directory (or some other directory
+or file, if one is specified) and picking an appropriate handler based upon
+a guess as to what kind of build system your project uses. For example,
+if an .xcodeproj bundle is found, the "xcodebuild" handler will be used.
+
+The actual work of building is split into "phases", summarised in the
+usage information above. Not all of the handlers implement all of the
+phases, and the precise meaning of a phase might vary slightly from
+build system to build system.
+
+The default build phase is "build", which maps to whatever you'd ordinarily
+expect a build system to do when you ask it to build something. If you don't
+specify --only (-O), then the "prepare" and "config" phases will be executed
+first. Whether these two phases actually do anything depends upon the handler
+in use.
+
+So, at its simplest, you can run:
+
+$ build
+
+If you specify --dir (-C), build will switch to the specified directory before
+doing anything else. If you also specify --project (-p), and it names a
+relative path, that path must be relative to the directory specified by --dir,
+rather than the current directory (this is consistent with GNU Make's
+handling of its -C and -f options).
+
+The -D option lets you define variables. These variables are merely stored
+and passed on to the underlying build system in different ways. Some of the
+handlers recognise particular variables and pass them onto the underlying
+build system in special ways.
+
+$ build -DFOO
+
+Defines a variable named "FOO" with a value of "1". Variables can have specific
+values:
+
+$ build -DFOO=off
+
+As well as -D, you can specify variables (provided that they have explicit
+values) by placing them at the end of the command-line:
+
+$ build config FOO=bar
+
+(This executes the "config" build phase for the project in the current
+directory, defining the variable "FOO" to be "bar").
+
+There is no variable substitution by build itself. That is, this will
+only do what you want if the underlying build system knows how to:
+
+$ build config 'FOO=bar' 'BAZ=$FOO'
+
+Many build systems *do* perform variable substitution themselves, so this
+may indeed work, but you should be wary of syntax -- consider using the
+substitution syntax which works across both sh(1) and make(1):
+
+$ build config 'Foo=bar' 'BAZ=${FOO}'
+
+Note also that single-quotes are used, to prevent the shell from substituting
+itself.
+
+The following variable names are also recognised as long options. That is,
+you can specify --NAME or --NAME=VALUE instead of -DNAME[=VALUE]:
+
+  prefix  exec-prefix  bindir  sbindir  libexecdir  sysconfdir  sharedstatedir
+  localstatedir  libdir  includedir  oldincludedir  datarootdir  datadir
+  infodir  localedir  mandir  docdir  htmldir  dvidir  pdfdir  psdir
+  program-prefix program-suffix program-transform-name
+
+(If you are familiar with GNU autoconf, you will recognise these names as
+the standard options available in a 'configure' script).
+
+In addition to the above, any long option starting "with-", "without-",
+"enable-" or "disable-" will similarly define a variable with a matching name.
+
+Given the above, here's an example of building an autoconf-based project, with
+a separate object directory and installing to a staging root:
+
+(The project is in 'sources' relative to the current directory)
+
+$ mkdir obj
+$ build -C obj --project=../sources --prefix=/opt/packages --sysconfdir=/etc install DESTDIR=/tmp/pkgroot
+
+Handlers
+========
+
+1. xcodebuild
+
+The 'xcodebuild' handler is responsible for building Xcode projects using
+Apple's xcodebuild(1) utility:
+
+		http://developer.apple.com/library/mac/#documentation/Darwin/Reference/ManPages/man1/xcodebuild.1.html
+
+The path specified by --project must either be an .xcodeproj bundle directory,
+or a directory containing exactly one .xcodeproj bundle. If no path is specified,
+the current directory is searched instead.
+
+Any variables are passed directly to xcodebuild.
+
+The --product option is passed to xcodebuild as -target.
+
+The --sdk option is passed to xcodebuild as -sdk.
+
+The --config option is passed to xcodebuild as -configuration.
+
+The --build, --host, and --target options are not supported.
+
+The 'prepare', 'config' and 'distclean' phases are no-ops.
+
+The 'clean', 'build' and 'install' phases invoke the equivalent
+xcodebuild phases.
+
+The BUILD_XCODEBUILD or XCODEBUILD environment variables may be used
+to specify the path to xcodebuild, with the former variable overriding
+the latter.
+
+2. gnumake
+
+The 'gnumake' handler is responsible for building Makefile-based
+projects with GNU Make.
+
+The 'prepare', 'config' and 'distclean' phases are no-ops.
+
+Any variables defined are passed directly to make on the command-line;
+any dashes are transformed to underscores.
+
+The --build, --host, and --target options are transformed into variables
+named BUILD_SYSTEM, HOST_SYSTEM and TARGET_SYSTEM respectively.
+
+The handler will look for, in order of preference, a utility
+in the PATH named "gnumake", "gmake" or "make". The BUILD_MAKE
+or MAKE environment variables may be used to specify the path
+to GNU Make, with the former variable overriding the latter.

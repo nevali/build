@@ -135,51 +135,11 @@ xcodebuild_args(cmd_t *cmd, build_context_t *ctx, const char *phase)
 }
 
 int
-xcodebuild_prepare(build_context_t *ctx)
-{
-	if(ctx->prepared)
-	{
-		return 0;
-	}
-	ctx->prepared = 1;
-	if(!ctx->quiet && (!ctx->isauto || ctx->verbose))
-	{
-		fprintf(stderr, "%s: Nothing to be done for phase 'prepare'\n", ctx->progname);
-	}
-	return 0;
-}
-
-int
-xcodebuild_config(build_context_t *ctx)
-{	
-	int r, a;
-
-	if(ctx->configured)
-	{
-		return 0;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->prepare(ctx));
-	ctx->prepared = 1;
-	if(!ctx->quiet && (!ctx->isauto || ctx->verbose))
-	{
-		fprintf(stderr, "%s: Nothing to be done for phase 'config'\n", ctx->progname);
-	}
-	return 0;
-}
-
-
-int
 xcodebuild_build(build_context_t *ctx)
 {
 	cmd_t *cmd;
-	int r, a;
+	int r;
 
-	if(ctx->built)
-	{
-		return 0;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->config(ctx));
-	ctx->built = 1;
 	cmd = context_cmd_create(ctx, "xcodebuild", NULL, "BUILD_XCODEBUILD", "XCODEBUILD", NULL);
 	xcodebuild_args(cmd, ctx, "build");
 	r = cmd_spawn(cmd, 0);
@@ -191,14 +151,8 @@ int
 xcodebuild_install(build_context_t *ctx)
 {
 	cmd_t *cmd;
-	int r, a;
+	int r;
 
-	if(ctx->installed)
-	{
-		return 0;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->build(ctx));
-	ctx->installed = 1;
 	cmd = context_cmd_create(ctx, "xcodebuild", NULL, "BUILD_XCODEBUILD", "XCODEBUILD", NULL);
 	xcodebuild_args(cmd, ctx, "install");
 	r = cmd_spawn(cmd, 0);
@@ -221,28 +175,16 @@ xcodebuild_clean(build_context_t *ctx)
 	return r;
 }
 
-int
-xcodebuild_distclean(build_context_t *ctx)
-{
-	if(!ctx->quiet && (!ctx->isauto || ctx->verbose))
-	{
-		fprintf(stderr, "%s: Nothing to be done for phase 'distclean'\n", ctx->progname);
-	}
-	return 0;
-}
-
-
-
 build_handler_t xcodebuild_handler = {
 	"xcodebuild",
 	"Builds Apple Xcode projects via xcodebuild",
 	xcodebuild_detect,
-	xcodebuild_prepare,
-	xcodebuild_config,
+	NULL,
+	NULL,
 	xcodebuild_build,
 	xcodebuild_install,
 	xcodebuild_clean,
-	xcodebuild_distclean,
+	NULL,
 };
 
 

@@ -52,6 +52,7 @@ typedef struct cmd_s cmd_t;
 struct build_context_s
 {
 	build_handler_t *vt;
+	int level;
 	/* Options */
 	const char *wd;
 	const char *progname;
@@ -106,11 +107,32 @@ struct cmd_s
 	char **argv;
 };
 
+typedef enum
+{
+	PH_DISTCLEAN,
+	PH_CLEAN,
+	PH_PREPARE,
+	PH_CONFIG,
+	PH_BUILD,
+	PH_INSTALL
+} build_phase_t;
+
+# define MSG_DEBUG -2
+# define MSG_INFO -1
+# define MSG_ECHO 0
+# define MSG_ERROR 1
+# define MSG_FATAL 2
+# define MSG_PERROR 3
+
 # ifdef __cplusplus
 extern "C" {
 # endif
 
 	void context_handler_list(FILE *fout);
+
+	int context_msg(build_context_t *ctx, int verbosity, const char *fmt, ...);
+
+	int context_build(build_context_t *ctx, build_phase_t phase, int isauto);
 
 	build_handler_t *context_detect(build_context_t *ctx);
 	

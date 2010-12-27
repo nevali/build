@@ -111,62 +111,11 @@ gnumake_detect(build_context_t *ctx)
 }
 
 int
-gnumake_distclean(build_context_t *ctx)
-{
-	if(!ctx->quiet && (!ctx->isauto || ctx->verbose))
-	{
-		fprintf(stderr, "%s: Nothing to be done for phase 'distclean'\n", ctx->progname);
-	}
-	return 0;
-}
-
-int
-gnumake_prepare(build_context_t *ctx)
-{
-	if(ctx->prepared)
-	{
-		return 0;
-	}
-	ctx->prepared = 1;
-	if(!ctx->quiet && (!ctx->isauto || ctx->verbose))
-	{
-		fprintf(stderr, "%s: Nothing to be done for phase 'prepare'\n", ctx->progname);
-	}
-	return 0;
-}
-
-int
-gnumake_config(build_context_t *ctx)
-{
-	int r, a;
-	
-	if(ctx->configured)
-	{
-		return 0;
-	}
-	ctx->configured = 1;
-	AUTODEP(ctx, a, r, r = ctx->vt->prepare(ctx));
-	if(!ctx->quiet && (!ctx->isauto || ctx->verbose))
-	{
-		fprintf(stderr, "%s: Nothing to be done for phase 'config'\n", ctx->progname);
-	}
-	return 0;
-}
-
-
-
-int
 gnumake_build(build_context_t *ctx)
 {
-	int r, a;
+	int r;
 	cmd_t *cmd;
 
-	if(ctx->built)
-	{
-		return 1;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->config(ctx));
-	ctx->built = 1;
 	cmd = context_cmd_create(ctx, "gnumake", "gmake", "make", NULL, "BUILD_MAKE", "MAKE", NULL);
 	if(ctx->project && ctx->vt == &gnumake_handler)
 	{
@@ -189,15 +138,9 @@ gnumake_build(build_context_t *ctx)
 int
 gnumake_install(build_context_t *ctx)
 {
-	int r, a;
+	int r;
 	cmd_t *cmd;
 	
-	if(ctx->installed)
-	{
-		return 0;
-	}
-	AUTODEP(ctx, a, r, r = ctx->vt->build(ctx));
-	ctx->installed = 1;
 	if(!ctx->quiet && !ctx->isauto && ctx->product)
 	{
 		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'install' phase of Makefile-based projects\n", ctx->progname, ctx->product);
@@ -220,8 +163,6 @@ gnumake_clean(build_context_t *ctx)
 	cmd_t *cmd;
 	int r;
 
-	ctx->built = 0;
-	ctx->installed = 0;
 	if(!ctx->quiet && !ctx->isauto && ctx->product)
 	{
 		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'clean' phase of Makefile-based projects\n", ctx->progname, ctx->product);
@@ -242,10 +183,10 @@ build_handler_t gnumake_handler = {
 	"gnumake",
 	"Builds Makefile-based projects with GNU Make",
 	gnumake_detect,
-	gnumake_prepare,
-	gnumake_config,
+	NULL,
+	NULL,
 	gnumake_build,
 	gnumake_install,
 	gnumake_clean,
-	gnumake_distclean
+	NULL,
 };
