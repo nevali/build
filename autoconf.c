@@ -245,6 +245,35 @@ autoconf_config(build_context_t *ctx)
 	cmd_destroy(cmd);
 	return r;
 }
+
+int
+autoconf_install(build_context_t *ctx)
+{
+	int r, a;
+	cmd_t *cmd;
+	build_defn_t *p;
+
+	if(ctx->installed)
+	{
+		return 0;
+	}
+	AUTODEP(ctx, a, r, r = ctx->vt->build(ctx));
+	ctx->installed = 1;
+	if(!ctx->quiet && !ctx->isauto && ctx->product)
+	{
+		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'install' phase of Makefile-based projects\n", ctx->progname, ctx->product);
+	}
+	cmd = context_cmd_create(ctx, "gnumake", "gmake", "make", NULL, "BUILD_MAKE", "MAKE", NULL);
+	cmd_arg_add(cmd, "install");
+	if((p = context_defn_find(ctx, "DESTDIR")) && p->value)
+	{
+		cmd_arg_addf(cmd, "DESTDIR=%s", p->value);
+	}
+	r = cmd_spawn(cmd, 0);
+	cmd_destroy(cmd);
+	return r;
+}
+
 	
 int
 autoconf_distclean(build_context_t *ctx)
@@ -273,7 +302,7 @@ build_handler_t autoconf_handler = {
 	autoconf_prepare,
 	autoconf_config,
 	gnumake_build,
-	gnumake_install,
+	autoconf_install,
 	gnumake_clean,
 	autoconf_distclean
 };
