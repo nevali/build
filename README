@@ -95,7 +95,7 @@ Many build systems *do* perform variable substitution themselves, so this
 may indeed work, but you should be wary of syntax -- consider using the
 substitution syntax which works across both sh(1) and make(1):
 
-$ build config 'Foo=bar' 'BAZ=${FOO}'
+$ build config 'FOO=bar' 'BAZ=${FOO}'
 
 Note also that single-quotes are used, to prevent the shell from substituting
 itself.
