@@ -40,7 +40,11 @@ autoconf_detect(build_context_t *ctx)
 	}
 	if(ctx->project)
 	{
-		chdir(ctx->project);
+		if(chdir(ctx->project) < 0)
+		{
+			fprintf(stderr, "%s: %s: %s\n", ctx->progname, ctx->project, strerror(errno));
+			return -1;
+		}
 	}
 	for(c = 0; try[c]; c++)
 	{
@@ -66,8 +70,18 @@ autoconf_prepare(build_context_t *ctx)
 	ctx->prepared = 1;
 	if(ctx->project)
 	{
-		chdir(ctx->project);
+		if(chdir(ctx->project) < 0)
+		{
+			fprintf(stderr, "%s: %s: %s\n", ctx->progname, ctx->project, strerror(errno));
+			return -1;
+		}
 	}
+	/* TODO:
+	 * 1. Find project root
+	 * 2. Is it configure.in or configure.ac ?
+	 * 3. Is it Makefile, makefile, GNUmakefile.{in,am} ?
+	 * 4. If auto mode, only rebuild if we detect changes
+	 */
 	cmd = context_cmd_create(ctx, "autoreconf", NULL, "BUILD_AUTORECONF", "AUTORECONF", NULL);
 	cmd_arg_add(cmd, "--install");
 	r = cmd_spawn(cmd, 0);
@@ -81,12 +95,16 @@ autoconf_config(build_context_t *ctx)
 {
 	int r, a;
 	cmd_t *cmd;
+	build_defn_t *p;
 
 	if(ctx->configured)
 	{
 		return 0;
 	}
 	AUTODEP(ctx, a, r, r = ctx->vt->prepare(ctx));
+	/* If auto mode, we should only re-run configure if it's newer
+	 * than our makefile.
+	 */
 	ctx->configured = 1;
 	cmd = context_cmd_create(ctx, "/bin/sh", NULL, NULL);
 	if(ctx->project)
@@ -109,6 +127,120 @@ autoconf_config(build_context_t *ctx)
 	{
 		cmd_arg_addf(cmd, "--target=%s", ctx->target);
 	}
+	if((p = context_defn_find(ctx, "prefix")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--prefix=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "exec-prefix")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--exec-prefix=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "bindir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--bindir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "libdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--libdir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "sbindir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--sbindir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "sysconfdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--sysconfdir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "libexecdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--libexec=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "sharedstatedir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--sharedstatedir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "localstatedir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--localstatedir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "oldincludedir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--oldincludedir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "datarootdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--datarootdir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "localedir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--localedir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "docdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--docdir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "infodir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--infodir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "mandir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--mandir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "htmldir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--htmldir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "dvidir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--dvidir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "pdfdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--pdfdir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "psdir")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--psdir=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "program-prefix")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--program-prefix=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "program-suffix")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--program-suffix=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "program-transform-name")) && p->value)
+	{
+		cmd_arg_addf(cmd, "--program-transform-name=%s", p->value);
+	}
+
+	if((p = context_defn_find(ctx, "CPP")) && p->value)
+	{
+		cmd_arg_addf(cmd, "CPP=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "CPPFLAGS")) && p->value)
+	{
+		cmd_arg_addf(cmd, "CPPFLAGS=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "CC")) && p->value)
+	{
+		cmd_arg_addf(cmd, "CC=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "CFLAGS")) && p->value)
+	{
+		cmd_arg_addf(cmd, "CFLAGS=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "LDFLAGS")) && p->value)
+	{
+		cmd_arg_addf(cmd, "LDFLAGS=%s", p->value);
+	}
+	if((p = context_defn_find(ctx, "LIBS")) && p->value)
+	{
+		cmd_arg_addf(cmd, "LIBS=%s", p->value);
+	}
+
 	r = cmd_spawn(cmd, 0);
 	cmd_destroy(cmd);
 	return r;
@@ -135,6 +267,8 @@ autoconf_distclean(build_context_t *ctx)
 }
 
 build_handler_t autoconf_handler = {
+	"autoconf",
+	"Builds GNU autoconf projects",
 	autoconf_detect,
 	autoconf_prepare,
 	autoconf_config,

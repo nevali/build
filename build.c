@@ -88,6 +88,7 @@ void
 parse_options(int argc, char **argv, build_context_t *context)
 {
 	int r;
+	char *p;
 
 	while((r = getopt_long(argc, argv, "hVONrvqD:C:P:B:H:T:c:s:", longopts, NULL)) != EOF)
 	{
@@ -141,6 +142,14 @@ parse_options(int argc, char **argv, build_context_t *context)
 		case 'q':
 			context->verbose = 0;
 			context->quiet = 1;
+			break;
+		case 'D':
+			if((p = strchr(optarg, '=')))
+			{
+				*p = 0;
+				p++;
+			}
+			context_defn_add(context, optarg, p);
 			break;
 		case '?':
 			exit(EXIT_FAILURE);

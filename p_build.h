@@ -30,6 +30,8 @@
 
 # include "nx_getopt_long.h"
 
+# include "uthash.h"
+
 # ifndef EXIT_SUCCESS
 #  define EXIT_SUCCESS                  0
 # endif
@@ -44,11 +46,13 @@ extern char **environ;
 
 typedef struct build_context_s build_context_t;
 typedef struct build_handler_s build_handler_t;
+typedef struct build_defn_s build_defn_t;
 typedef struct cmd_s cmd_t;
 
 struct build_context_s
 {
 	build_handler_t *vt;
+	/* Options */
 	const char *wd;
 	const char *progname;
 	const char *project;
@@ -59,6 +63,8 @@ struct build_context_s
 	const char *config;
 	const char *sdk;
 	const char *remote;
+	build_defn_t *defs;
+	/* State */
 	struct stat sbuf;
 	int here;
 	int quiet;
@@ -74,6 +80,8 @@ struct build_context_s
 
 struct build_handler_s
 {
+	const char *name;
+	const char *summary;
 	int (*detect)(build_context_t *context);
 	int (*prepare)(build_context_t *context);
 	int (*config)(build_context_t *context);
@@ -81,6 +89,13 @@ struct build_handler_s
 	int (*install)(build_context_t *context);
 	int (*clean)(build_context_t *context);
 	int (*distclean)(build_context_t *context);
+};
+
+struct build_defn_s
+{
+	char *name;
+	char *value;
+	UT_hash_handle hh;
 };
 
 struct cmd_s
@@ -96,6 +111,9 @@ extern "C" {
 # endif
 
 	build_handler_t *context_detect(build_context_t *ctx);
+	
+	build_defn_t *context_defn_add(build_context_t *ctx, const char *name, const char *value);
+	build_defn_t *context_defn_find(build_context_t *ctx, const char *name);
 
 	int context_chdir(build_context_t *ctx);
 	int context_returnwd(build_context_t *ctx);

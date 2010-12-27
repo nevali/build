@@ -95,6 +95,8 @@ xcodebuild_detect(build_context_t *ctx)
 static void
 xcodebuild_args(cmd_t *cmd, build_context_t *ctx, const char *phase)
 {
+	build_defn_t *p;
+
 	if(ctx->project)
 	{
 		cmd_arg_add(cmd, "-project");
@@ -118,6 +120,17 @@ xcodebuild_args(cmd_t *cmd, build_context_t *ctx, const char *phase)
 	if(phase)
 	{
 		cmd_arg_add(cmd, phase);
+	}
+	for(p = ctx->defs; p; p = p->hh.next)
+	{
+		if(p->value)
+		{
+			cmd_arg_addf(cmd, "%s=%s", p->name, p->value);
+		}
+		else
+		{
+			cmd_arg_addf(cmd, "%s=1", p->name);
+		}
 	}
 }
 
@@ -221,6 +234,8 @@ xcodebuild_distclean(build_context_t *ctx)
 
 
 build_handler_t xcodebuild_handler = {
+	"xcodebuild",
+	"Builds Apple Xcode projects via xcodebuild",
 	xcodebuild_detect,
 	xcodebuild_prepare,
 	xcodebuild_config,

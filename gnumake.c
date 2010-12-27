@@ -29,6 +29,8 @@ extern build_handler_t gnumake_handler;
 static void
 gnumake_args(cmd_t *cmd, build_context_t *ctx)
 {
+	build_defn_t *p;
+
 	if(ctx->build)
 	{
 		cmd_arg_addf(cmd, "BUILD_SYSTEM=%s", ctx->build);
@@ -40,6 +42,17 @@ gnumake_args(cmd_t *cmd, build_context_t *ctx)
 	if(ctx->target)
 	{
 		cmd_arg_addf(cmd, "TARGET_SYSTEM=%s", ctx->target);
+	}
+	for(p = ctx->defs; p; p = p->hh.next)
+	{
+		if(p->value)
+		{
+			cmd_arg_addf(cmd, "%s=%s", p->name, p->value);
+		}
+		else
+		{
+			cmd_arg_addf(cmd, "%s=1", p->name);
+		}
 	}
 }
 
@@ -219,6 +232,8 @@ gnumake_clean(build_context_t *ctx)
 }
 
 build_handler_t gnumake_handler = {
+	"gnumake",
+	"Builds Makefile-based projects with GNU Make",
 	gnumake_detect,
 	gnumake_prepare,
 	gnumake_config,

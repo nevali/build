@@ -308,3 +308,47 @@ cmd_destroy(cmd_t *cmd)
 	return 0;
 }
 
+build_defn_t *
+context_defn_add(build_context_t *ctx, const char *name, const char *value)
+{
+	build_defn_t *p;
+	size_t l;
+
+	if(!(p = malloc(sizeof(build_defn_t))))
+	{
+		fprintf(stderr, "%s: malloc(%u): %s\n", ctx->progname, (unsigned) sizeof(build_defn_t), strerror(errno));
+		return NULL;
+	}
+	l = strlen(name) + 1;
+	if(value)
+	{
+		l += strlen(value) + 1;
+	}
+	if(!(p->name = calloc(1, l)))
+	{
+		fprintf(stderr, "%s: malloc(%u): %s\n", ctx->progname, (unsigned) l, strerror(errno));
+		free(p);
+		return NULL;
+	}
+	strcpy(p->name, name);
+	if(value)
+	{
+		p->value = &(p->name[strlen(name) + 1]);
+		strcpy(p->value, value);
+	}
+	else
+	{
+		p->value = NULL;
+	}
+	HASH_ADD_KEYPTR(hh, ctx->defs, p->name, strlen(p->name), p);
+	return p;
+}
+
+build_defn_t *
+context_defn_find(build_context_t *ctx, const char *name)
+{
+	build_defn_t *p;
+
+	HASH_FIND_STR(ctx->defs, name, p);
+	return p;
+}
