@@ -38,6 +38,17 @@ static build_handler_t *handlers[] = {
 	NULL
 };
 
+void
+context_handler_list(FILE *fout)
+{
+	size_t c;
+
+	for(c = 0; handlers[c]; c++)
+	{
+		fprintf(fout, "  %-18s %s\n", handlers[c]->name, handlers[c]->summary);
+	}
+}
+
 build_handler_t *
 context_detect(build_context_t *ctx)
 {

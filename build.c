@@ -76,6 +76,9 @@ usage(void)
 			"      clean                         Remove 'build' output\n"
 			"      distclean                     Remove 'build' and 'config' output\n",
 			progname, progname, progname, progname);
+	fprintf(stderr, "\nAvailable handlers:\n\n");
+	context_handler_list(stderr);
+	fprintf(stderr, "\n");
 }
 
 static void

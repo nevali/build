@@ -110,6 +110,8 @@ struct cmd_s
 extern "C" {
 # endif
 
+	void context_handler_list(FILE *fout);
+
 	build_handler_t *context_detect(build_context_t *ctx);
 	
 	build_defn_t *context_defn_add(build_context_t *ctx, const char *name, const char *value);
