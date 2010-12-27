@@ -108,7 +108,7 @@ extern "C" {
 	int cmd_arg_vaddf(cmd_t *cmd, const char *arg, va_list ap);
 	int cmd_arg_addf(cmd_t *cmd, const char *arg, ...);
 
-	int cmd_spawn(cmd_t *cmd);
+	int cmd_spawn(cmd_t *cmd, int ignore);
 
 	int cmd_destroy(cmd_t *cmd);
 

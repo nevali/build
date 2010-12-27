@@ -23,11 +23,14 @@
 extern build_handler_t xcodebuild_handler;
 #endif
 extern build_handler_t gnumake_handler;
+extern build_handler_t autoconf_handler;
+
 
 static build_handler_t *handlers[] = {
 #ifdef ENABLE_XCODEBUILD
 	&xcodebuild_handler,
 #endif
+	&autoconf_handler,
 	/* The GNU Make handler will always detect true if a regular file
 	 * is passed as a project, so must be last.
 	 */
@@ -173,7 +176,12 @@ context_cmd_create(build_context_t *ctx, const char *name, ...)
 		p = name;
 		for(va_start(ap, name); p; p = va_arg(ap, const char *))
 		{
-			if((cmdline = context_pathsearch(ctx, p)))
+			if(strchr(p, '/'))
+			{
+				cmdline = p;
+				break;
+			}
+			else if((cmdline = context_pathsearch(ctx, p)))
 			{
 				break;
 			}
@@ -241,7 +249,7 @@ cmd_arg_addf(cmd_t *cmd, const char *arg, ...)
 }
 
 int
-cmd_spawn(cmd_t *cmd)
+cmd_spawn(cmd_t *cmd, int ignore)
 {
 	pid_t pid, r;
 	int status;
@@ -281,6 +289,14 @@ cmd_spawn(cmd_t *cmd)
 	}
 	if(r)
 	{
+		if(ignore)
+		{
+			if(!cmd->context->quiet)
+			{
+				fprintf(stderr, "%s: *** Build phase failed with exit status %d.  (Ignored)\n", cmd->context->progname, r);
+			}
+			return 0;
+		}
 		fprintf(stderr, "%s: *** Build phase failed with exit status %d.  Stop.\n", cmd->context->progname, r);
 	}
 	return r;	

@@ -24,6 +24,8 @@
 
 #include "p_build.h"
 
+extern build_handler_t gnumake_handler;
+
 static void
 gnumake_args(cmd_t *cmd, build_context_t *ctx)
 {
@@ -146,17 +148,20 @@ gnumake_build(build_context_t *ctx)
 	{
 		return 1;
 	}
-	ctx->built = 1;
 	AUTODEP(ctx, a, r, r = ctx->vt->config(ctx));
+	ctx->built = 1;
 	cmd = context_cmd_create(ctx, "gnumake", "gmake", "make", NULL, "BUILD_MAKE", "MAKE", NULL);
-	cmd_arg_addf(cmd, "-f%s", ctx->project);
+	if(ctx->project && ctx->vt == &gnumake_handler)
+	{
+		cmd_arg_addf(cmd, "-f%s", ctx->project);
+	}
 	if(ctx->product)
 	{
 		cmd_arg_add(cmd, "--");
 		cmd_arg_add(cmd, ctx->product);
 	}
-	r = cmd_spawn(cmd);
 	gnumake_args(cmd, ctx);
+	r = cmd_spawn(cmd, 0);
 	cmd_destroy(cmd);
 	return r;
 }
@@ -167,21 +172,24 @@ gnumake_install(build_context_t *ctx)
 	int r, a;
 	cmd_t *cmd;
 	
-	AUTODEP(ctx, a, r, r = ctx->vt->build(ctx));
 	if(ctx->installed)
 	{
 		return 0;
 	}
+	AUTODEP(ctx, a, r, r = ctx->vt->build(ctx));
 	ctx->installed = 1;
 	if(!ctx->quiet && !ctx->isauto && ctx->product)
 	{
 		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'install' phase of Makefile-based projects\n", ctx->progname, ctx->product);
 	}
 	cmd = context_cmd_create(ctx, "gnumake", "gmake", "make", NULL, "BUILD_MAKE", "MAKE", NULL);
-	cmd_arg_addf(cmd, "-f%s", ctx->project);
+	if(ctx->project && ctx->vt == &gnumake_handler)
+	{
+		cmd_arg_addf(cmd, "-f%s", ctx->project);
+	}
 	cmd_arg_add(cmd, "install");
 	gnumake_args(cmd, ctx);
-	r = cmd_spawn(cmd);
+	r = cmd_spawn(cmd, 0);
 	cmd_destroy(cmd);
 	return r;
 }
@@ -199,12 +207,15 @@ gnumake_clean(build_context_t *ctx)
 		fprintf(stderr, "%s: Warning: product specification '%s' is ignored by the 'clean' phase of Makefile-based projects\n", ctx->progname, ctx->product);
 	}
 	cmd = context_cmd_create(ctx, "gnumake", "gmake", "make", NULL, "BUILD_MAKE", "MAKE", NULL);
-	cmd_arg_addf(cmd, "-f%s", ctx->project);
+	if(ctx->project && ctx->vt == &gnumake_handler)
+	{
+		cmd_arg_addf(cmd, "-f%s", ctx->project);
+	}
 	cmd_arg_add(cmd, "clean");
 	gnumake_args(cmd, ctx);
-	r = cmd_spawn(cmd);
+	r = cmd_spawn(cmd, ctx->isauto);
 	cmd_destroy(cmd);
-	return 0;
+	return r;
 }
 
 build_handler_t gnumake_handler = {
