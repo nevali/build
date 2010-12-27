@@ -45,6 +45,10 @@ gnumake_args(cmd_t *cmd, build_context_t *ctx)
 	}
 	for(p = ctx->defs; p; p = p->hh.next)
 	{
+		if(p->name[0] == '-')
+		{
+			continue;
+		}
 		if(p->value)
 		{
 			cmd_arg_addf(cmd, "%s=%s", p->name, p->value);
@@ -173,7 +177,10 @@ gnumake_build(build_context_t *ctx)
 		cmd_arg_add(cmd, "--");
 		cmd_arg_add(cmd, ctx->product);
 	}
-	gnumake_args(cmd, ctx);
+	if(ctx->project && ctx->vt == &gnumake_handler)
+	{
+		gnumake_args(cmd, ctx);
+	}
 	r = cmd_spawn(cmd, 0);
 	cmd_destroy(cmd);
 	return r;
