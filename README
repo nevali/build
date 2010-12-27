@@ -172,3 +172,80 @@ The handler will look for, in order of preference, a utility
 in the PATH named "gnumake", "gmake" or "make". The BUILD_MAKE
 or MAKE environment variables may be used to specify the path
 to GNU Make, with the former variable overriding the latter.
+
+The 'build', 'install' and 'clean' phases all invoke make,
+specifying the name of the makefile via the '-f' make option.
+
+The 'build' phase builds the default target of the project
+makefile, except where the --product option is used. In this
+event the value of this option is used as the name of the
+target that make should build.
+
+For example, invoking:
+
+$ build --product=docs
+
+...will result in a make command-line along the lines of:
+
+gmake -f GNUmakefile docs
+
+(assuming in this instance that 'GNUmakefile' exists in the project directory).
+
+3. autoconf
+
+The 'autoconf' handler builds GNU autotools-based projects. Such projects
+are detected by the presence of a 'configure.ac' or 'configure.in' file
+in either the project directory or one of its parents.
+
+The 'prepare' phase invokes autoreconf(1) to generate a configure script.
+If the 'prepare' phase is invoked implicitly as a prerequisite for the 'config'
+phase, autoreconf(1) invocation will be skipped if either 'configure.gnu'
+or 'configure' exists and has a modification time more recent than that
+of 'configure.ac' or 'configure.in' (depending upon which exists, the
+former taking precedence). If the 'prepare' phase is invoked explicitly,
+autoreconf(1) is executed unconditionally.
+
+autoreconf(1) is invoked with the '--install' option. The path to autoreconf
+can be overridden by way of the BUILD_AUTORECONF or AUTORECONF environment
+variables, with the former taking precedence.
+
+The 'config' phase executes the project's 'configure.gnu' or 'configure'
+script (the former taking precedence). Any of variables whose names
+are listed as being acceptable as long options in the "Invocation" section
+above are passed as parameters to the configure script, including those
+beginning with "with-", "without-", "enable-" and "disable-". In addition,
+any values specified with the --build, --host and --target options are
+passed to the configure script.
+
+The following variables are passed on the configure command-line following
+any options:
+
+  CPP  CPPFLAGS  CC  CFLAGS  LIBS  LDFLAGS
+
+The 'build' phase invokes one of 'gnumake', 'gmake', or 'make', whichever
+is found first. If a product is specified, it will be passed to make as
+the name of the target to build.
+
+Note that the detection logic for the autoconf handler
+searches parent directories of the project directory in order to locate
+the configure script, and so the project directory may be a subdirectory
+of the project root -- in this event, the 'build', 'clean' and 'distclean'
+phases operate within the subdirectory, allowing part of a project to
+be (re)built.
+
+The 'install' phase invokes make with a target name of "install". If a
+DESTDIR variable is defined, this is passed to make on its commandline.
+
+The 'clean' and 'distclean' phases invoke make with matching target names.
+
+4. ant
+5. maven
+6. jam
+7. scons
+8. smake
+9. nbuild
+10. msbuild
+
+...
+
+TODO.
