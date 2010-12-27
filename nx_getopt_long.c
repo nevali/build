@@ -24,17 +24,24 @@
 
 #include "nx_getopt_long.h"
 
+const char *nx_longopt = NULL;
+
 int
 nx_getopt_long(int argc, char *const *argv, const char *shortopts, const struct nx_option *longopts, int *indexptr)
 {
 	int lopterr, r, c;
 	char *op, *ap;
-	char buf[32];
+	static char buf[32];
 	size_t l;
 	static int lastlong = -1;
 
 	lopterr = opterr;
-	opterr = 0;
+	opterr = optopt = 0;
+	nx_longopt = NULL;
+	if(indexptr)
+	{
+		*indexptr = -1;
+	}
 	do
 	{
 		c = optind >= 1 ? optind : 1;
@@ -52,6 +59,11 @@ nx_getopt_long(int argc, char *const *argv, const char *shortopts, const struct 
 	}
 	if(argv[c][1] == '-')
 	{
+		if(argv[c][2] == 0)
+		{
+			/* Rest argument */
+			return EOF;
+		}
 		lastlong = c;
 		op = argv[c] + 2;
 		if((ap = strchr(op, '=')))
@@ -62,20 +74,23 @@ nx_getopt_long(int argc, char *const *argv, const char *shortopts, const struct 
 		{
 			l = strlen(op);
 		}
+		strncpy(buf, op, l >= sizeof(buf) ? sizeof(buf) - 1 : l);
+		buf[(l >= sizeof(buf) ? sizeof(buf) - 1 : l)] = 0;
+		optarg = (ap ? ap + 1 : NULL);
 		if(longopts)
 		{
 			for(c = 0; longopts[c].name; c++)
-			{
+			{				
 				if(strlen(longopts[c].name) != l || strncmp(op, longopts[c].name, l))
 				{
 					continue;
 				}
+				nx_longopt = longopts[c].name;
 				if(indexptr)
 				{
 					*indexptr = c;
 				}
 				optopt = longopts[c].val;
-				optarg = ap + 1;
 				if(longopts[c].flag)
 				{
 					*(longopts[c].flag) = optopt ? optopt : 1;
@@ -86,7 +101,7 @@ nx_getopt_long(int argc, char *const *argv, const char *shortopts, const struct 
 					if(ap)
 					{
 						if(lopterr)
-						{
+						{				 
 							fprintf(stderr, "%s: option `--%s` doesn't allow an argument\n", argv[0], longopts[c].name);
 						}
 						opterr = lopterr;
@@ -109,23 +124,11 @@ nx_getopt_long(int argc, char *const *argv, const char *shortopts, const struct 
 				return optopt;						
 			}
 		}
+		fprintf(stderr, "buf=[%s]\n", buf);
+		nx_longopt = buf;
 		if(lopterr)
 		{
-			if((ap = strchr(op, '=')))
-			{
-				l = op - ap;
-			}
-			else
-			{
-				l = strlen(op);
-			}
-			if(l > sizeof(buf) - 1)
-			{
-				l = sizeof(buf) - 1;
-			}
-			strncpy(buf, op, l);
-			buf[l] = 0;
-			fprintf(stderr, "%s: unrecongnized option `--%s`\n", argv[0], buf);
+			fprintf(stderr, "%s: unrecognized option `--%s`\n", argv[0], buf);
 		}
 		opterr = lopterr;
 		return '?';

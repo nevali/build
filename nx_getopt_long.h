@@ -29,6 +29,8 @@ struct nx_option {
 	int val;
 };
 
+extern const char *nx_longopt;
+
 # ifdef __cplusplus
 extern "C" {
 # endif
@@ -50,5 +52,6 @@ int nx_getopt_long(int argc, char *const *argv, const char *shortopts, const str
 # define optional_argument              nx_optional_argument
 # define option                         nx_option
 # define getopt_long                    nx_getopt_long
+# define longopt                        nx_longopt
 
 #endif /*!NX_GETOPT_LONG_H_*/
