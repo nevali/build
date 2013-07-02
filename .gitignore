@@ -16,6 +16,7 @@ Makefile.in
 /config.guess
 /config.sub
 /config.h
+/config.h.in
 /ltmain.sh
 /missing
 /stamp-h*
